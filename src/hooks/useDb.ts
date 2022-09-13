@@ -2,7 +2,9 @@ import {
   IDbState,
   IInitDbClientConfig,
   initDbClient,
+  runInTransaction,
   stopDb,
+  withSuppressedLog,
 } from "@kikko-land/kikko";
 import { ISqlAdapter } from "@kikko-land/query-builder";
 import { listenQueries } from "@kikko-land/reactive-queries-plugin";
@@ -14,7 +16,20 @@ import {
   computed,
   ComputedRef,
   shallowRef,
+  ref,
 } from "vue";
+
+export type ISingleQueryHookResult<D> =
+  | {
+      type: "loading";
+      data?: D;
+    }
+  | {
+      type: "waitingDb";
+      data?: D;
+    }
+  | { type: "loaded"; data: D }
+  | { type: "noSqlPresent"; data?: D };
 
 type Falsy = false | 0 | "" | null | undefined;
 
@@ -84,13 +99,13 @@ export type IQueryResult<D> =
   | { type: "loaded"; data: D[] }
   | { type: "noSqlPresent"; data: D[] };
 
-export const useQuery = <D extends Record<string, unknown>>(
+export const useQueries = <D extends Record<string, unknown>>(
   dbStateRef: Ref<IDbInitState>,
-  query: ISqlAdapter | Falsy,
+  queries: ISqlAdapter[] | Falsy,
   _opts?: { suppressLog?: boolean; mapToObject?: boolean } | undefined
-): ComputedRef<IQueryResult<D>> => {
-  const queryRef = shallowRef(query);
-  const dataRef = shallowRef<D[]>([]) as Ref<D[]>;
+): ComputedRef<IQueryResult<D[]>> => {
+  const queriesRef = shallowRef(queries);
+  const dataRef = shallowRef<D[][]>([]) as Ref<D[][]>;
   const resultTypeRef = shallowRef<IQueryResult<D>["type"]>("waitingDb");
 
   watchEffect((onCleanup) => {
@@ -102,7 +117,7 @@ export const useQuery = <D extends Record<string, unknown>>(
       return;
     }
 
-    if (!queryRef.value) {
+    if (!queriesRef.value) {
       resultTypeRef.value = "noSqlPresent";
 
       return;
@@ -112,9 +127,9 @@ export const useQuery = <D extends Record<string, unknown>>(
 
     resultTypeRef.value = "loading";
 
-    const subscription = listenQueries<D>(db, [queryRef.value]).subscribe(
+    const subscription = listenQueries<D>(db, queriesRef.value).subscribe(
       (res) => {
-        dataRef.value = res[0];
+        dataRef.value = res;
         resultTypeRef.value = "loaded";
       }
     );
@@ -124,20 +139,21 @@ export const useQuery = <D extends Record<string, unknown>>(
     });
   });
 
-  if (!queryRef.value && query) {
-    queryRef.value = query;
+  if (!queriesRef.value && queries) {
+    queriesRef.value = queries;
   }
 
-  if (!query) {
-    queryRef.value = undefined;
+  if (!queries) {
+    queriesRef.value = undefined;
   }
 
   if (
-    query &&
-    queryRef.value &&
-    query.toSql().hash !== queryRef.value.toSql().hash
+    queries &&
+    queriesRef.value &&
+    queries.map((q) => q.toSql().hash).join() !==
+      queriesRef.value.map((q) => q.toSql().hash).join()
   ) {
-    queryRef.value = query;
+    queriesRef.value = queries;
   }
 
   return computed(() => ({
@@ -145,3 +161,127 @@ export const useQuery = <D extends Record<string, unknown>>(
     type: resultTypeRef.value,
   }));
 };
+
+export const useQuery = <D extends Record<string, unknown>>(
+  dbStateRef: Ref<IDbInitState>,
+  query: ISqlAdapter | Falsy,
+  _opts?: { suppressLog?: boolean; mapToObject?: boolean } | undefined
+): ComputedRef<IQueryResult<D>> => {
+  const result = useQueries<D>(dbStateRef, query ? [query] : [], _opts);
+
+  return computed(() => ({
+    ...result.value,
+    data: result.value.data?.[0] || [],
+  }));
+};
+
+export const useQueryFirstRow = <D extends Record<string, unknown>>(
+  dbStateRef: Ref<IDbInitState>,
+  query: ISqlAdapter | Falsy,
+  _opts?: { suppressLog?: boolean; mapToObject?: boolean } | undefined
+): ComputedRef<ISingleQueryHookResult<D>> => {
+  const res = useQuery<D>(dbStateRef, query, _opts);
+
+  return computed(() => ({
+    ...res.value,
+    data: res.value.type === "loaded" ? res.value.data[0] : res.value.data?.[0],
+  }));
+};
+
+export type IRunQueryHookResult<D> =
+  | {
+      type: "running";
+      data?: D;
+    }
+  | {
+      type: "waitingDb";
+      data?: D;
+    }
+  | { type: "done"; data: D }
+  | { type: "idle"; data?: D };
+
+export function useRunQuery<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  D extends (db: IDbState) => (...args: any[]) => Promise<R>,
+  R
+>(
+  dbStateRef: Ref<IDbInitState>,
+  cb: D,
+  _opts?: { suppressLog?: boolean; inTransaction?: boolean } | undefined
+): {
+  run: (...args: Parameters<ReturnType<D>>) => Promise<R>;
+  state: ComputedRef<IRunQueryHookResult<R>>;
+} {
+  const { suppressLog, inTransaction } = {
+    suppressLog: _opts?.suppressLog !== undefined ? _opts.suppressLog : false,
+    inTransaction:
+      _opts?.inTransaction !== undefined ? _opts.inTransaction : true,
+  };
+
+  const data = ref<R>();
+
+  const runState = shallowRef<IRunQueryHookResult<R>["type"]>(
+    dbStateRef.value.type === "initialized" ? "idle" : "waitingDb"
+  ) as Ref<IRunQueryHookResult<R>["type"]>;
+  watchEffect(() => {
+    if (
+      runState.value === "waitingDb" &&
+      dbStateRef.value.type === "initialized"
+    ) {
+      runState.value = "idle";
+    }
+
+    if (
+      runState.value !== "waitingDb" &&
+      (dbStateRef.value.type === "notInitialized" ||
+        dbStateRef.value.type === "initializing")
+    ) {
+      runState.value = "waitingDb";
+    }
+  });
+
+  watchEffect((onCleanup) => {
+    const dbState = dbStateRef.value;
+  });
+
+  const cbRef = shallowRef(cb) as Ref<typeof cb>;
+  watchEffect(() => {
+    cbRef.value = cb;
+  });
+
+  const finalCallback = shallowRef(
+    async (...args: Parameters<ReturnType<D>>) => {
+      if (dbStateRef.value.type !== "initialized") {
+        // TODO: maybe wait db init as opts?
+
+        throw new Error("Db not initialized!");
+      }
+
+      runState.value = "running";
+
+      const db = suppressLog
+        ? withSuppressedLog(dbStateRef.value.db)
+        : dbStateRef.value.db;
+
+      try {
+        const res = await (inTransaction
+          ? runInTransaction(db, (db) => cb(db)(...args))
+          : cb(db)(...args));
+
+        data.value = res;
+
+        return res;
+      } finally {
+        runState.value = "done";
+      }
+    }
+  );
+
+  return {
+    run: finalCallback.value,
+    state: computed(() => ({
+      type: runState.value,
+      data: data.value,
+    })) as ComputedRef<IRunQueryHookResult<R>>,
+  };
+}

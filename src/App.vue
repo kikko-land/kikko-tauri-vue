@@ -43,6 +43,7 @@ useInitDb({
   dbBackend: tauriBackend((dbName) => `${dbName}.db`),
   plugins: [migrationsPlugin({ migrations: [createNotesTableMigration] }), reactiveQueriesPlugin()],
 });
+
 </script>
 
 <template>

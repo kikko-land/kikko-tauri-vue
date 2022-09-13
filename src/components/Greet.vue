@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { currentDb, useQuery, useQueryFirstRow, useRunQuery } from "../hooks/useDb";
+import { useQuery, useQueryFirstRow, useRunQuery } from "@kikko-land/vue-use";
 import { makeId, runQuery } from "@kikko-land/kikko";
 import { insert, select, sql } from "@kikko-land/query-builder";
+import { currentDb } from "../currentDb";
 
 const notes = useQuery(currentDb, select().from('notes'))
 const notesCount = useQueryFirstRow<{count: number}>(currentDb, select({count: sql`COUNT(*)`}).from('notes'))

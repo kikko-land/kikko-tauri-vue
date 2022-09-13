@@ -5,11 +5,12 @@ import Greet from "./components/Greet.vue";
 
 import { IMigration, migrationsPlugin } from "@kikko-land/migrations-plugin";
 import { tauriBackend } from "@kikko-land/tauri-backend";
-import { useInitDb } from "./hooks/useDb";
+import { useInitDb } from "@kikko-land/vue-use";
+import { currentDb } from "./currentDb";
 import {
   reactiveQueriesPlugin,
 } from "@kikko-land/reactive-queries-plugin";
-import {runQuery} from "@kikko-land/kikko";
+import { runQuery } from "@kikko-land/kikko";
 import { sql } from "@kikko-land/query-builder";
 
 const createNotesTableMigration: IMigration = {
@@ -38,7 +39,7 @@ const createNotesTableMigration: IMigration = {
   name: "createNotesTable",
 }
 
-useInitDb({
+useInitDb(currentDb, {
   dbName: "helloWorld",
   dbBackend: tauriBackend((dbName) => `${dbName}.db`),
   plugins: [migrationsPlugin({ migrations: [createNotesTableMigration] }), reactiveQueriesPlugin()],

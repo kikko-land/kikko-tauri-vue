@@ -75,6 +75,15 @@
     "@kikko-land/sql.js" "^1.6.8"
     tauri-plugin-sqlite-api "github:lzdyes/tauri-plugin-sqlite#v0.1.0"
 
+"@kikko-land/vue-use@^0.1.1":
+  version "0.1.1"
+  resolved "https://registry.yarnpkg.com/@kikko-land/vue-use/-/vue-use-0.1.1.tgz#ad20c6805431b79a854e74cfeaa8d722a6f017c3"
+  integrity sha512-2v3IqtAcbw8AriM4+9R2bvOutF1H/PEJM9jksylEP0biXkrSM0piplBxkmMn6ZdcQhaSH6VbLqkFopSKZoMUBg==
+  dependencies:
+    "@kikko-land/kikko" "^0.2.0"
+    "@kikko-land/reactive-queries-plugin" "^0.2.0"
+    "@kikko-land/sql" "^0.1.1"
+
 "@tauri-apps/api@1.0.0-rc.4":
   version "1.0.0-rc.4"
   resolved "https://registry.yarnpkg.com/@tauri-apps/api/-/api-1.0.0-rc.4.tgz#454ef7b15237f3d5752bbfc09c8997a00b1e8a9b"

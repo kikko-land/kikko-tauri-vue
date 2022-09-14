@@ -3,48 +3,36 @@
 // Check out https://vuejs.org/api/sfc-script-setup.html#script-setup
 import Greet from "./components/Greet.vue";
 
-import { IMigration, migrationsPlugin } from "@kikko-land/migrations-plugin";
-import { tauriBackend } from "@kikko-land/tauri-backend";
-import { useInitDb } from "@kikko-land/vue-use";
-import { currentDb } from "./currentDb";
 import {
+  IMigration,
+  migrationsPlugin,
+  useInitDb,
+  runQuery,
+  sql,
   reactiveQueriesPlugin,
-} from "@kikko-land/reactive-queries-plugin";
-import { runQuery } from "@kikko-land/kikko";
-import { sql } from "@kikko-land/query-builder";
+} from "@kikko-land/vue";
+import { tauriBackend } from "@kikko-land/tauri-backend";
+import { currentDb } from "./currentDb";
 
 const createNotesTableMigration: IMigration = {
   up: async (db) => {
     await runQuery(
       db,
-      sql`
-      CREATE TABLE IF NOT EXISTS notes (
-        id varchar(20) PRIMARY KEY,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        updatedAt INTEGER NOT NULL,
-        createdAt INTEGER NOT NULL
-      );
-    `
-    );
-
-    await runQuery(
-      db,
-      sql`
-      CREATE INDEX IF NOT EXISTS idx_note_title ON notes(title);
-    `
+      sql`CREATE TABLE notes(id varchar(20) PRIMARY KEY, title TEXT NOT NULL);`
     );
   },
   id: 18,
   name: "createNotesTable",
-}
+};
 
 useInitDb(currentDb, {
-  dbName: "helloWorld",
+  dbName: "helloWorld2",
   dbBackend: tauriBackend((dbName) => `${dbName}.db`),
-  plugins: [migrationsPlugin({ migrations: [createNotesTableMigration] }), reactiveQueriesPlugin()],
+  plugins: [
+    migrationsPlugin({ migrations: [createNotesTableMigration] }),
+    reactiveQueriesPlugin(),
+  ],
 });
-
 </script>
 
 <template>
